@@ -46,7 +46,7 @@ async def handle_media_stream(websocket: WebSocket):
     try:
         logger.info("Connecting to OpenAI Realtime API...")
         async with websockets.connect(
-            f"wss://api.openai.com/v1/realtime?model=gpt-realtime-2&voice={VOICE}&temperature={TEMPERATURE}",
+            f"wss://api.openai.com/v1/realtime?model=gpt-realtime-2",
             additional_headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             ping_interval=5,
             ping_timeout=10
@@ -58,34 +58,43 @@ async def handle_media_stream(websocket: WebSocket):
             init_data = json.loads(init_msg)
             logger.info(f"Initial event: {init_data.get('type')}")
             
-            # Log the default session config so we know what's available
+            # Log default session to understand the format
             session = init_data.get("session", {})
             logger.info(f"Default session keys: {list(session.keys())}")
-            logger.info(f"Default voice: {session.get('voice')}")
-            logger.info(f"Default modalities: {session.get('modalities')}")
             
-            # Send ONLY the instructions update - pass voice/temp as query params instead
+            # GA API format with nested audio config
             session_update = {
                 "type": "session.update",
                 "session": {
                     "type": "realtime",
+                    "output_modalities": ["text", "audio"],
                     "instructions": SYSTEM_MESSAGE,
-                    "input_audio_format": "g711_ulaw",
-                    "output_audio_format": "g711_ulaw",
+                    "audio": {
+                        "input": {
+                            "format": {"type": "g711_ulaw"}
+                        },
+                        "output": {
+                            "format": {"type": "g711_ulaw"},
+                            "voice": VOICE
+                        }
+                    },
                     "turn_detection": {
                         "type": "server_vad"
-                    }
+                    },
+                    "temperature": TEMPERATURE
                 }
             }
             await openai_ws.send(json.dumps(session_update))
-            logger.info("Session update sent")
+            logger.info("Session update sent (GA format)")
             
             # Check response
             update_resp = await asyncio.wait_for(openai_ws.recv(), timeout=10)
             update_data = json.loads(update_resp)
             logger.info(f"Update response: {update_data.get('type')}")
             if update_data.get('type') == 'error':
-                logger.error(f"Update error: {update_data.get('error', {})}")
+                logger.error(f"Update error: {json.dumps(update_data.get('error', {}))}")
+            elif update_data.get('type') == 'session.updated':
+                logger.info("Session updated successfully!")
             
             stream_sid = None
             
