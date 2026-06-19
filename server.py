@@ -24,7 +24,7 @@ async def index():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hustlemode-voice", "openai_key_set": bool(OPENAI_API_KEY)}
+    return {"status": "ok", "service": "hustlemode-voice"}
 
 @app.api_route("/incoming-call", methods=["GET", "POST"])
 async def incoming_call(request: Request):
@@ -46,7 +46,7 @@ async def handle_media_stream(websocket: WebSocket):
     try:
         logger.info("Connecting to OpenAI Realtime API...")
         async with websockets.connect(
-            f"wss://api.openai.com/v1/realtime?model=gpt-realtime-2",
+            f"wss://api.openai.com/v1/realtime?model=gpt-realtime-2&voice={VOICE}&temperature={TEMPERATURE}",
             additional_headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             ping_interval=5,
             ping_timeout=10
@@ -58,30 +58,34 @@ async def handle_media_stream(websocket: WebSocket):
             init_data = json.loads(init_msg)
             logger.info(f"Initial event: {init_data.get('type')}")
             
-            # Send minimal session update - only override what we need
+            # Log the default session config so we know what's available
+            session = init_data.get("session", {})
+            logger.info(f"Default session keys: {list(session.keys())}")
+            logger.info(f"Default voice: {session.get('voice')}")
+            logger.info(f"Default modalities: {session.get('modalities')}")
+            
+            # Send ONLY the instructions update - pass voice/temp as query params instead
             session_update = {
                 "type": "session.update",
                 "session": {
                     "type": "realtime",
-                    "voice": VOICE,
                     "instructions": SYSTEM_MESSAGE,
                     "input_audio_format": "g711_ulaw",
                     "output_audio_format": "g711_ulaw",
                     "turn_detection": {
                         "type": "server_vad"
-                    },
-                    "temperature": TEMPERATURE
+                    }
                 }
             }
             await openai_ws.send(json.dumps(session_update))
             logger.info("Session update sent")
             
-            # Wait for session.updated confirmation
+            # Check response
             update_resp = await asyncio.wait_for(openai_ws.recv(), timeout=10)
             update_data = json.loads(update_resp)
-            logger.info(f"Session update response: {update_data.get('type')}")
+            logger.info(f"Update response: {update_data.get('type')}")
             if update_data.get('type') == 'error':
-                logger.error(f"Session update error: {update_data.get('error', {})}")
+                logger.error(f"Update error: {update_data.get('error', {})}")
             
             stream_sid = None
             
@@ -111,7 +115,7 @@ async def handle_media_stream(websocket: WebSocket):
                         msg_type = data.get("type", "")
                         
                         if msg_type == "session.updated":
-                            logger.info("Session updated OK")
+                            logger.info("Session updated OK!")
                         elif msg_type == "error":
                             logger.error(f"OpenAI error: {data.get('error', {})}")
                         elif msg_type == "response.audio.delta" and stream_sid:
@@ -121,7 +125,7 @@ async def handle_media_stream(websocket: WebSocket):
                                 "media": {"payload": data["delta"]}
                             })
                         elif msg_type == "response.audio_transcript.delta":
-                            logger.info(f"AI: {data.get('delta', '')[:80]}")
+                            logger.info(f"AI says: {data.get('delta', '')[:80]}")
                         elif msg_type == "input_audio_buffer.speech_started" and stream_sid:
                             await websocket.send_json({"event": "clear", "streamSid": stream_sid})
                             await openai_ws.send(json.dumps({
@@ -136,8 +140,6 @@ async def handle_media_stream(websocket: WebSocket):
                                 "streamSid": stream_sid,
                                 "mark": {"name": "responseDone"}
                             })
-                        elif msg_type in ["response.content_part.done"]:
-                            logger.info(f"Event: {msg_type}")
                 except Exception as e:
                     logger.error(f"Error to Twilio: {e}")
 
