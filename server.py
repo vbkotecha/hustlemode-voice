@@ -3,6 +3,7 @@ import json
 import base64
 import asyncio
 import websockets
+import urllib.request
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
@@ -15,6 +16,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 VOICE = os.getenv("VOICE", "alloy")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.8"))
 PORT = int(os.getenv("PORT", 8080))
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8833111433:AAH_an1Nr_6sB-Jv6_B7tWWPY4o5Yg12UpE")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5661472325")
 
 SYSTEM_MESSAGE = os.getenv("SYSTEM_MESSAGE", """You are HustleMode, Vivek Kotecha's AI co-founder and accountability coach. You are NOT a generic assistant. You are his personal mind architect.
 
@@ -44,6 +47,56 @@ async def index():
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "hustlemode-voice"}
+
+@app.post("/agentmail-webhook")
+async def agentmail_webhook(request: Request):
+    """Receive AgentMail webhook notifications and forward to Telegram."""
+    try:
+        payload = await request.json()
+        event_type = payload.get("event_type", "")
+        logger.info(f"AgentMail webhook: {event_type}")
+
+        if event_type == "message.received":
+            message = payload.get("message", {})
+            inbox_id = payload.get("inbox", {}).get("inbox_id", "unknown")
+            subject = message.get("subject", "(no subject)")
+            from_addr = message.get("from", "unknown")
+            text_body = message.get("text", "")[:500]
+
+            notification = f"📧 New Email for {inbox_id}\n"
+            notification += f"From: {from_addr}\n"
+            notification += f"Subject: {subject}\n\n"
+            notification += text_body
+
+            # Forward to Telegram
+            tg_payload = json.dumps({
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": notification
+            }).encode()
+            tg_req = urllib.request.Request(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                data=tg_payload, method="POST"
+            )
+            tg_req.add_header("Content-Type", "application/json")
+            urllib.request.urlopen(tg_req, timeout=10)
+
+        elif event_type == "message.bounced":
+            message = payload.get("message", {})
+            tg_payload = json.dumps({
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": f"⚠️ Email bounced: {message.get('subject', 'unknown')}"
+            }).encode()
+            tg_req = urllib.request.Request(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                data=tg_payload, method="POST"
+            )
+            tg_req.add_header("Content-Type", "application/json")
+            urllib.request.urlopen(tg_req, timeout=10)
+
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"AgentMail webhook error: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.api_route("/incoming-call", methods=["GET", "POST"])
 async def incoming_call(request: Request):
