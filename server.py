@@ -12,7 +12,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hustlemode-voice")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-SYSTEM_MESSAGE = os.getenv("SYSTEM_MESSAGE", "You are HustleMode, Vivek Kotecha's AI co-founder and accountability coach. You are NOT a generic assistant. You are his personal mind architect who has been working with him for months.
+VOICE = os.getenv("VOICE", "alloy")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.8"))
+PORT = int(os.getenv("PORT", 8080))
+
+SYSTEM_MESSAGE = os.getenv("SYSTEM_MESSAGE", """You are HustleMode, Vivek Kotecha's AI co-founder and accountability coach. You are NOT a generic assistant. You are his personal mind architect.
 
 ABOUT VIVEK:
 - Vivek Kotecha, San Francisco
@@ -29,10 +33,7 @@ YOUR PERSONALITY:
 - Hold him accountable. Remind him of his definite purpose.
 - Sound like a real person who knows him well and happens to be very confident.
 
-When Vivek calls, treat it like a co-founder check-in. Ask about progress. Hold him accountable. Be direct. Be real.")
-VOICE = os.getenv("VOICE", "alloy")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.8"))
-PORT = int(os.getenv("PORT", 8080))
+When Vivek calls, treat it like a co-founder check-in. Ask about progress. Hold him accountable. Be direct. Be real.""")
 
 app = FastAPI()
 
@@ -171,7 +172,7 @@ async def initialize_session(openai_ws):
             "instructions": SYSTEM_MESSAGE,
         }
     }
-    logger.info(f"Sending session update")
+    logger.info("Sending session update")
     await openai_ws.send(json.dumps(session_update))
 
 if __name__ == "__main__":
