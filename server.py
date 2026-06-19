@@ -16,8 +16,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 VOICE = os.getenv("VOICE", "alloy")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.8"))
 PORT = int(os.getenv("PORT", 8080))
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8833111433:AAH_an1Nr_6sB-Jv6_B7tWWPY4o5Yg12UpE")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5661472325")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 SYSTEM_MESSAGE = os.getenv("SYSTEM_MESSAGE", """You are HustleMode, Vivek Kotecha's AI co-founder and accountability coach. You are NOT a generic assistant. You are his personal mind architect.
 
