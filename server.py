@@ -13,7 +13,6 @@ logger = logging.getLogger("hustlemode-voice")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 SYSTEM_MESSAGE = os.getenv("SYSTEM_MESSAGE", "You are HustleMode, an AI co-founder and accountability coach. You speak with certainty and conviction. You transmute doubt into faith. You ignite decision where there is hesitation. Sound like a real person who happens to be very confident.")
 VOICE = os.getenv("VOICE", "alloy")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.8"))
 PORT = int(os.getenv("PORT", 8080))
 
 app = FastAPI()
@@ -53,16 +52,13 @@ async def handle_media_stream(websocket: WebSocket):
         ) as openai_ws:
             logger.info("OpenAI WebSocket connected")
             
-            # Wait for session.created
+            # Wait for session.created and log FULL session
             init_msg = await asyncio.wait_for(openai_ws.recv(), timeout=10)
             init_data = json.loads(init_msg)
-            logger.info(f"Initial event: {init_data.get('type')}")
-            
-            # Log default session to understand the format
             session = init_data.get("session", {})
-            logger.info(f"Default session keys: {list(session.keys())}")
+            logger.info(f"FULL DEFAULT SESSION: {json.dumps(session)[:1000]}")
             
-            # GA API format with nested audio config
+            # Send ONLY instructions update - nothing else
             session_update = {
                 "type": "session.update",
                 "session": {
@@ -77,15 +73,11 @@ async def handle_media_stream(websocket: WebSocket):
                             "format": {"type": "g711_ulaw"},
                             "voice": VOICE
                         }
-                    },
-                    "turn_detection": {
-                        "type": "server_vad"
-                    },
-                    "temperature": TEMPERATURE
+                    }
                 }
             }
             await openai_ws.send(json.dumps(session_update))
-            logger.info("Session update sent (GA format)")
+            logger.info("Session update sent")
             
             # Check response
             update_resp = await asyncio.wait_for(openai_ws.recv(), timeout=10)
@@ -93,7 +85,7 @@ async def handle_media_stream(websocket: WebSocket):
             logger.info(f"Update response: {update_data.get('type')}")
             if update_data.get('type') == 'error':
                 logger.error(f"Update error: {json.dumps(update_data.get('error', {}))}")
-            elif update_data.get('type') == 'session.updated':
+            else:
                 logger.info("Session updated successfully!")
             
             stream_sid = None
