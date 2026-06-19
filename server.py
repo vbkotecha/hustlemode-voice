@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hustlemode-voice")
 
@@ -59,8 +58,16 @@ async def handle_media_stream(websocket: WebSocket):
             ping_timeout=10
         ) as openai_ws:
             logger.info("OpenAI WebSocket connected")
+            
+            # Wait for session.created event first
+            init_msg = await asyncio.wait_for(openai_ws.recv(), timeout=10)
+            init_data = json.loads(init_msg)
+            logger.info(f"Initial OpenAI event: {init_data.get('type')}")
+            
+            # Now send session update with the correct format
             await send_session_update(openai_ws)
             logger.info("Session update sent")
+            
             stream_sid = None
             
             async def receive_from_twilio():
@@ -88,10 +95,8 @@ async def handle_media_stream(websocket: WebSocket):
                         data = json.loads(message)
                         msg_type = data.get("type", "")
                         
-                        if msg_type == "session.created":
-                            logger.info("OpenAI session created")
-                        elif msg_type == "session.updated":
-                            logger.info("OpenAI session updated")
+                        if msg_type == "session.updated":
+                            logger.info("OpenAI session updated successfully")
                         elif msg_type == "error":
                             logger.error(f"OpenAI error: {data.get('error', {})}")
                         elif msg_type == "response.audio.delta" and stream_sid:
@@ -114,7 +119,11 @@ async def handle_media_stream(websocket: WebSocket):
                                 "streamSid": stream_sid,
                                 "mark": {"name": "responseDone"}
                             })
-                        elif msg_type in ["response.content_part.done", "response.done"]:
+                        elif msg_type == "response.audio_transcript.delta":
+                            transcript = data.get("delta", "")
+                            if transcript:
+                                logger.info(f"Transcript: {transcript[:100]}")
+                        elif msg_type in ["response.content_part.done"]:
                             logger.info(f"OpenAI event: {msg_type}")
                 except Exception as e:
                     logger.error(f"Error sending to Twilio: {e}")
@@ -129,7 +138,8 @@ async def send_session_update(openai_ws):
     session_update = {
         "type": "session.update",
         "session": {
-            "modalities": ["audio", "text"],
+            "type": "realtime",
+            "modalities": ["text", "audio"],
             "instructions": SYSTEM_MESSAGE,
             "voice": VOICE,
             "input_audio_format": "g711_ulaw",
@@ -143,7 +153,7 @@ async def send_session_update(openai_ws):
             "temperature": TEMPERATURE
         }
     }
-    logger.info(f"Sending session update: {json.dumps(session_update)[:200]}")
+    logger.info(f"Sending session update")
     await openai_ws.send(json.dumps(session_update))
 
 if __name__ == "__main__":
